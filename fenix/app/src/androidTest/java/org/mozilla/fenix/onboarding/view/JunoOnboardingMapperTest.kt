@@ -4,43 +4,33 @@
 
 package org.mozilla.fenix.onboarding.view
 
+import mozilla.components.service.nimbus.evalJexlSafe
 import org.junit.Assert.assertEquals
-import org.junit.Rule
 import org.junit.Test
 import org.mozilla.experiments.nimbus.StringHolder
 import org.mozilla.fenix.R
-import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
+import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.helpers.TestHelper.appContext
+import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.nimbus.OnboardingCardData
 import org.mozilla.fenix.nimbus.OnboardingCardType
 
 class JunoOnboardingMapperTest {
 
-    @get:Rule
-    val activityTestRule =
-        HomeActivityIntentTestRule.withDefaultSettingsOverrides(skipOnboarding = true)
-
     @Test
     fun showNotificationTrue_showAddWidgetFalse_pagesToDisplay_returnsSortedListOfAllConvertedPages_withoutAddWidgetPage() {
+        val junoOnboardingFeature = FxNimbus.features.junoOnboarding.value()
         val expected = listOf(defaultBrowserPageUiData, syncPageUiData, notificationPageUiData)
-        assertEquals(expected, unsortedAllKnownCardData.toPageUiData(true, false))
-    }
-
-    @Test
-    fun showNotificationFalse_showAddWidgetFalse_pagesToDisplay_returnsSortedListOfConvertedPages_withoutNotificationPage_and_addWidgetPage() {
-        val expected = listOf(defaultBrowserPageUiData, syncPageUiData)
-        assertEquals(expected, unsortedAllKnownCardData.toPageUiData(false, false))
-    }
-
-    @Test
-    fun showNotificationFalse_showAddWidgetTrue_pagesToDisplay_returnsSortedListOfAllConvertedPages_withoutNotificationPage() {
-        val expected = listOf(defaultBrowserPageUiData, addSearchWidgetPageUiData, syncPageUiData)
-        assertEquals(expected, unsortedAllKnownCardData.toPageUiData(false, true))
-    }
-
-    @Test
-    fun showNotificationTrue_and_showAddWidgetTrue_pagesToDisplay_returnsSortedListOfConvertedPages() {
-        val expected = listOf(defaultBrowserPageUiData, addSearchWidgetPageUiData, syncPageUiData, notificationPageUiData)
-        assertEquals(expected, unsortedAllKnownCardData.toPageUiData(true, true))
+        val jexlConditions = junoOnboardingFeature.conditions
+        val jexlHelper = appContext.components.analytics.messagingStorage.helper
+        assertEquals(
+            expected,
+            unsortedAllKnownCardData.toPageUiData(
+                showNotificationPage = true,
+                showAddWidgetPage = false,
+                jexlConditions = jexlConditions,
+            ) { condition -> jexlHelper.evalJexlSafe(condition) },
+        )
     }
 }
 
@@ -88,7 +78,24 @@ private val defaultBrowserCardData = OnboardingCardData(
     primaryButtonLabel = StringHolder(null, "default browser primary button text"),
     secondaryButtonLabel = StringHolder(null, "default browser secondary button text"),
     ordering = 10,
+    prerequisites = listOf("ALWAYS"),
+    disqualifiers = listOf("NEVER"),
 )
+
+private val defaultBrowserCardDataNoDisqualifiers = OnboardingCardData(
+    cardType = OnboardingCardType.DEFAULT_BROWSER,
+    ordering = 10,
+    prerequisites = listOf("ALWAYS"),
+    disqualifiers = listOf(),
+)
+
+private val addSearchWidgetCardDataEmptyPrerequisitesAndDisqualifiers = OnboardingCardData(
+    cardType = OnboardingCardType.ADD_SEARCH_WIDGET,
+    ordering = 15,
+    prerequisites = listOf(),
+    disqualifiers = listOf(),
+)
+
 private val addSearchWidgetCardData = OnboardingCardData(
     cardType = OnboardingCardType.ADD_SEARCH_WIDGET,
     imageRes = R.drawable.ic_onboarding_search_widget,
@@ -99,6 +106,7 @@ private val addSearchWidgetCardData = OnboardingCardData(
     secondaryButtonLabel = StringHolder(null, "add search widget secondary button text"),
     ordering = 15,
 )
+
 private val syncCardData = OnboardingCardData(
     cardType = OnboardingCardType.SYNC_SIGN_IN,
     imageRes = R.drawable.ic_onboarding_sync,

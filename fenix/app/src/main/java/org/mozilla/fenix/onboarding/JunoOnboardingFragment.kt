@@ -23,9 +23,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.Fragment
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.navigation.fragment.findNavController
+import mozilla.components.service.nimbus.evalJexlSafe
 import mozilla.components.support.base.ext.areNotificationsEnabledSafe
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
+import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.hideToolbar
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.openSetDefaultBrowserOption
@@ -47,6 +49,7 @@ class JunoOnboardingFragment : Fragment() {
 
     private val pagesToDisplay by lazy {
         pagesToDisplay(
+            requireContext(),
             canShowNotificationPage(requireContext()),
             canShowAddWidgetCard(),
         )
@@ -219,11 +222,18 @@ class JunoOnboardingFragment : Fragment() {
     private fun isNotATablet() = !resources.getBoolean(R.bool.tablet)
 
     private fun pagesToDisplay(
+        context: Context,
         showNotificationPage: Boolean,
         showAddWidgetPage: Boolean,
-    ): List<OnboardingPageUiData> =
-        FxNimbus.features.junoOnboarding.value().cards.values.toPageUiData(
+    ): List<OnboardingPageUiData> {
+        val junoOnboardingFeature = FxNimbus.features.junoOnboarding.value()
+        val jexlConditions = junoOnboardingFeature.conditions
+        val jexlHelper = context.components.analytics.messagingStorage.helper
+
+        return FxNimbus.features.junoOnboarding.value().cards.values.toPageUiData(
             showNotificationPage,
             showAddWidgetPage,
-        )
+            jexlConditions,
+        ) { condition -> jexlHelper.evalJexlSafe(condition) }
+    }
 }

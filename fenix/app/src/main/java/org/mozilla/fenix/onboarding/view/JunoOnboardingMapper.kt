@@ -15,21 +15,100 @@ import org.mozilla.fenix.settings.SupportUtils
 internal fun Collection<OnboardingCardData>.toPageUiData(
     showNotificationPage: Boolean,
     showAddWidgetPage: Boolean,
-): List<OnboardingPageUiData> =
-    filter {
-        when (it.cardType) {
-            OnboardingCardType.NOTIFICATION_PERMISSION -> {
-                it.enabled && showNotificationPage
-            }
-            OnboardingCardType.ADD_SEARCH_WIDGET -> {
-                it.enabled && showAddWidgetPage
-            }
-            else -> {
-                it.enabled
+    jexlConditions: Map<String, String>,
+    func: (String) -> Boolean,
+): List<OnboardingPageUiData> {
+    // we are first filtering the cards based on Nimbus configuration
+    return filter { it.shouldDisplayCard(func, jexlConditions) }
+        // we are then filtering again based on device capabilities
+        .filter { it.isCardEnabled(showNotificationPage, showAddWidgetPage) }
+        .sortedBy { it.ordering }
+        .map { it.toPageUiData() }
+}
+fun OnboardingCardData.isCardEnabled(
+    showNotificationPage: Boolean,
+    showAddWidgetPage: Boolean,
+): Boolean =
+    when (cardType) {
+        OnboardingCardType.NOTIFICATION_PERMISSION -> {
+            enabled && showNotificationPage
+        }
+
+        OnboardingCardType.ADD_SEARCH_WIDGET -> {
+            enabled && showAddWidgetPage
+        }
+
+        else -> {
+            enabled
+        }
+    }
+
+/**
+ *  Returns true if the the current Nimbus card fulfills all the conditions in order to display it and false otherwise
+ *
+ *  @param func A function that takes an expression as an argument and returns a boolean representing the result of the jexl evaluation
+ *  @param jexlConditions A <String, String> map containing the Nimbus conditions
+ *
+ *  @return True - if the card should be displayed and False otherwise.
+ */
+fun OnboardingCardData.shouldDisplayCard(
+    func: (String) -> Boolean,
+    jexlConditions: Map<String, String>,
+): Boolean {
+    return verifyConditionEligibility(
+        prerequisites = prerequisites,
+        disqualifiers = disqualifiers,
+        jexlConditions = jexlConditions,
+        eval = func,
+    )
+}
+
+/**
+ * Evaluates the eligibility of given [cardConditions] against the [jexlConditions].
+ *
+ * @param prerequisites The list of prerequisites to be verified for eligibility.
+ * @param disqualifiers The list of disqualifiers to be verified for eligibility.
+ * @param jexlConditions The Nimbus conditions map.
+ *
+ * @return True if the card's condition list is valid.
+ */
+fun verifyConditionEligibility(
+    prerequisites: List<String>,
+    disqualifiers: List<String>,
+    jexlConditions: Map<String, String>,
+    eval: (String) -> Boolean,
+): Boolean {
+    val jexlCache: MutableMap<String, Boolean> = mutableMapOf()
+
+    // Make sure the conditions exist and have a value, and that the number
+    // of valid conditions matches the number of conditions on the card's
+    // respective prerequisite or disqualifier table. If these mismatch,
+    // that means a card contains a condition that's not in the feature
+    // conditions lookup table. JEXLs can only be evaluated on
+    val allPrerequisites = prerequisites.mapNotNull { jexlConditions[it] }
+    val allDisqualifiers = disqualifiers.mapNotNull { jexlConditions[it] }
+
+    val validPrerequisites = if (allPrerequisites.size == prerequisites.size) {
+        allPrerequisites.all { condition ->
+            jexlCache.getOrPut(condition) {
+                eval(condition)
             }
         }
-    }.sortedBy { it.ordering }
-        .map { it.toPageUiData() }
+    } else {
+        false
+    }
+
+    val validDisqualifiers = if (allDisqualifiers.size == disqualifiers.size) {
+        allDisqualifiers.all { condition ->
+            jexlCache.getOrPut(condition) {
+                eval(condition)
+            }
+        }
+    } else {
+        false
+    }
+    return validPrerequisites && !validDisqualifiers
+}
 
 private fun OnboardingCardData.toPageUiData() = OnboardingPageUiData(
     type = cardType.toPageUiDataType(),
